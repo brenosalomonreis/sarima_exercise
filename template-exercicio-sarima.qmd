@@ -292,7 +292,7 @@ sf = StatsForecast(models=[AutoARIMA(season_length=12)], freq='MS', n_jobs=1)
 sf.fit(df = df_sarima)
 
 # Ver modelo selecionado
-fitted = sf.fitted_[0, 0].model_
+fitted = sf.fitted_[0, 0]
 print("Modelo selecionado:")
 print(fitted.model_['arma'])  # (p, q, P, Q, s, d, D)
 print(f"\nAICc: {fitted.model_['aicc']:.2f}")
@@ -302,12 +302,59 @@ print(f"Ordem (p,d,q): ({fitted.model_['arma'][0]}, {fitted.model_['arma'][5]}, 
 
 
 6. Diagnóstico dos resíduos.
+```{python}
+
+modelo = sf.fitted_[0, 0].model_
+residuos = pd.Series(modelo.get('residuals', []))
+
+if len(residuos) > 0:
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+
+    # Resíduos no tempo
+    axes[0].plot(residuos.values, color=INSPER_TURQUESA, linewidth=0.9, alpha=0.8)
+    axes[0].axhline(0, color='#888', linestyle='--', linewidth=0.8)
+    axes[0].set_title('Resíduos no tempo')
+    axes[0].set_ylabel('Resíduo'); axes[0].grid(True)
+
+    # Histograma
+    axes[1].hist(residuos, bins=30, color=INSPER_AMARELO, alpha=0.7, edgecolor='#333')
+    axes[1].set_title('Distribuição dos resíduos')
+    axes[1].set_xlabel('Valor'); axes[1].grid(True, axis='y')
+
+    # ACF dos resíduos — deve ser ruído branco
+    plot_acf(residuos, ax=axes[2], lags=24, zero=False,
+             title='ACF dos resíduos\n(deve estar dentro do IC)')
+
+    plt.suptitle('Diagnóstico — Resíduos do modelo SARIMA', fontsize=12, y=1.02)
+    plt.tight_layout()
+    plt.show()
+
+    print("✅ Se a ACF dos resíduos estiver dentro do IC → modelo bem ajustado!")
+else:
+    print("(Resíduos não disponíveis nesta versão do statsforecast)")
+
+
+```
 
 ## Previsão · 24 meses à frente
 
 7. Previsão de 24 meses à frente, com intervalos de 80% e 95%.
 
+```{python}
 
+forecast = sf.predict(h=24, level=[80, 95])
+
+fig, ax = plt.subplots(figsize=(12, 4))
+ax.plot(df_sarima['ds'], df_sarima['y'], color='#5B5B5B', linewidth=0.8, label='Histórico')
+ax.plot(forecast['ds'], forecast['AutoARIMA'], color='#E50505', linewidth=2, label='AutoARIMA')
+ax.fill_between(forecast['ds'],
+                forecast['AutoARIMA-lo-95'], forecast['AutoARIMA-hi-95'],
+                alpha=0.15, color='#E50505', label='IC 95%')
+ax.set_title('PMC — previsão 24 meses com AutoARIMA')
+ax.set_ylabel('PMC - Base 2022 = 100'); ax.legend(); ax.grid(alpha=0.3)
+plt.tight_layout(); plt.show()
+
+```
 
 ## Discussão dos Resultados
 
@@ -322,8 +369,15 @@ A visualização sugere que existe tendência de subida no PMC Mensal, porém, c
 
 2. Quantas diferenças (regular e sazonal) o AutoARIMA aplicou? E os componentes AR/MA? Conseguiu observar isso no ACF/PACF?
 
+
+
 3. Os resíduos parecem white noise? Algum padrão remanescente sazonal?
 
+
+
 4. A previsão pareceu razoável visualmente (captura a sazonalidade, fica bem ancorada no histórico, intervalos abrem muito com o horizonte)?
+
+
+
 
 5. Que outras UFs você imagina que dariam um SARIMA bem diferente do seu (e por quê)? Pense em estados de regiões diferentes, com perfil econômico distinto.
