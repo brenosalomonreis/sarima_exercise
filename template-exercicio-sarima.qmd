@@ -19,6 +19,9 @@ Você receberá **uma UF de interesse**, e deve aplicar a análise abaixo:
 ```{python}
 import numpy as np
 import pandas as pd
+import datetime
+import matplotlib.dates as mdates
+import matplotlib.units as munits
 import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
@@ -30,6 +33,9 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 
 from statsforecast import StatsForecast
 from statsforecast.models import AutoARIMA, ARIMA
+
+import warnings
+warnings.filterwarnings('ignore')
 
 # Estilo dos gráficos
 plt.rcParams.update({
@@ -66,8 +72,15 @@ df_sf = (
     .reset_index(drop=True)
 )
 
+#Criar uma nova variavel date-time para as visualizações
+df_sf['t'] = pd.to_datetime(df_sf['ds'],format="%Y-%m-%d")
+
+#Redefinindo o index
+df_sf = df_sf.set_index('ds')
+
 df_sf.tail()
 ```
+
 
 ## Análise descritiva
 
@@ -75,7 +88,7 @@ df_sf.tail()
 ```{python}
 # Série completa 
 fig = px.line(
-    df_sf, y='y', x='ds',
+    df_sf, y='y',
     labels={'ds': 'Data', 'y': 'PMC'},
     template='plotly_white'
 )
@@ -96,8 +109,8 @@ fig.show()
 ```{python}
 # Últimos 36 meses
 fig = px.line(
-    df_sf[df_sf['ds'] >= '2022-02-01'], y='y', x='ds',
-    labels={'ds': 'Data', 'y': 'PMC'},
+    df_sf[df_sf['t'] >= '2023-01-01'], y='y', x='t',
+    labels={'t': 'Data', 'y': 'PMC'},
     template='plotly_white'
 )
 fig.update_traces(line_color=INSPER_RED)
@@ -120,12 +133,15 @@ fig.show()
 def plotar_diagnostico(serie_y, serie_x, lags=36):
     """Plota série + ACF + PACF em layout 3x1"""
     fig, axes = plt.subplots(3, 1, figsize=(12, 10))
-
+    
     # Série
-    axes[0].plot(serie_y, color=INSPER_RED, linewidth=0.8)
-    axes[0].set_title('PMC — Série mensal completa para MG', fontsize=14)
+    axes[0].plot(serie_x, serie_y, color=INSPER_RED, linewidth=0.8)
+    axes[0].xaxis.set_major_locator(mdates.MonthLocator(interval=6))
+    axes[0].xaxis.set_major_formatter(mdates.DateFormatter('%m/%y'))
+    axes[0].tick_params(axis='x', labelrotation=45, labelsize=8)
+    axes[0].set_xlim([datetime.date(2003, 12, 1), datetime.date(2026, 4, 2)])
     axes[0].axhline(y=serie_y.mean(), color=INSPER_GRAY, linestyle='--', alpha=0.5)
-    axes[0].axline(y=serie_y.mean(), color=INSPER_GRAY, linestyle='--', alpha=0.5)
+    axes[0].set_title('PMC - Últimos 36 meses para MG', fontsize=14)
 
     # ACF
     plot_acf(serie_y.dropna(), ax=axes[1], lags=lags, zero=False,
@@ -140,16 +156,155 @@ def plotar_diagnostico(serie_y, serie_x, lags=36):
     plt.tight_layout()
     plt.show()
 
-plotar_diagnostico(df_sf['y'], df_sf['ds'])
+plotar_diagnostico(df_sf['y'], df_sf['t'])
+
+```
+
+Observando tendência e sazonalidade por meio da Decomposição STL
+```{python}
+# Decomposição STL
+pmc_mensal = df_sf['y']
+pmc_mensal = pmc_mensal.interpolate()
+
+stl = STL(pmc_mensal, period=12, robust=True)
+resultado = stl.fit()
+
+fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+
+componentes = {
+    'Observado': pmc_mensal,
+    'Tendência': resultado.trend,
+    'Sazonalidade': resultado.seasonal,
+    'Resíduo': resultado.resid
+}
+cores = [INSPER_RED, INSPER_TURQUESA, INSPER_AMARELO, INSPER_GRAY]
+
+for ax, (nome, comp), cor in zip(axes, componentes.items(), cores):
+    ax.plot(comp, color=cor, linewidth=0.8)
+    ax.set_ylabel(nome, fontweight='bold')
+    ax.axhline(y=0, color='gray', linestyle='--', alpha=0.3)
+
+plt.suptitle('Decomposição STL — PMC Mensal', fontsize=14, fontweight='bold')
+plt.tight_layout()
+plt.show()
+
+```
+
+4. Testes de raiz unitária (ADF, KPSS) e estimativa de `ndiffs`.
+
+Testes de raiz unitária
+```{python}
+
+def testar_estacionariedade(serie, nome = "Série"):
+    #Aplica testes ADF e KPSS e interpreta resultados
+    print(f"{'='*50}")
+    print(f"Testes de Estacionariedade — {nome}")
+    print(f"{'='*50}\n")
+
+    # ADF
+    resultado_adf = adfuller(serie.dropna(), autolag='AIC')
+    print(f"Teste ADF (H0: raiz unitária)")
+    print(f"  Estatística: {resultado_adf[0]:.4f}")
+    print(f"  p-valor:     {resultado_adf[1]:.4f}")
+    print(f"  Lags usados: {resultado_adf[2]}")
+
+    if resultado_adf[1] < 0.05:
+        print(f"  → Rejeita H0: evidência de estacionariedade\n")
+    else:
+        print(f"  → Não rejeita H0: evidência de raiz unitária\n")
+
+    # KPSS
+    resultado_kpss = kpss(serie.dropna(), regression='c', nlags='auto')
+    print(f"Teste KPSS (H0: estacionária)")
+    print(f"  Estatística: {resultado_kpss[0]:.4f}")
+    print(f"  p-valor:     {resultado_kpss[1]:.4f}")
+
+    if resultado_kpss[1] < 0.05:
+        print(f"  → Rejeita H0: evidência de não-estacionariedade\n")
+    else:
+        print(f"  → Não rejeita H0: evidência de estacionariedade\n")
+
+    # Conclusão conjunta
+    adf_estacionaria = resultado_adf[1] < 0.05
+    kpss_estacionaria = resultado_kpss[1] >= 0.05
+
+    if adf_estacionaria and kpss_estacionaria:
+        print("CONCLUSÃO: Série provavelmente ESTACIONÁRIA")
+    elif not adf_estacionaria and not kpss_estacionaria:
+        print("CONCLUSÃO: Série provavelmente NÃO ESTACIONÁRIA")
+    else:
+        print("CONCLUSÃO: Resultados INCONCLUSIVOS — análise adicional necessária")
+
+testar_estacionariedade(df_sf['y'], 'PMC mensal')
 
 ```
 
 
-4. Testes de raiz unitária (ADF, KPSS) e estimativa de `ndiffs`.
+Estimativa de qtd de diferenciações (1ª diferença)
+```{python}
+# Primeira diferença
+df_diff = df_sf
+df_diff['diff_1'] = df_diff['y'].diff().dropna()
+df_diff['diff_1'] = df_diff['diff_1'].dropna()
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+axes[0].plot(df_sf['y'], color=INSPER_RED, linewidth=0.8)
+axes[0].set_title('PMC Original', fontweight='bold')
+
+axes[1].plot(df_diff['diff_1'], color=INSPER_TURQUESA, linewidth=0.8)
+axes[1].set_title('PMC — Primeira Diferença', fontweight='bold')
+axes[1].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+
+plt.tight_layout()
+plt.show()
+
+# Testes na série diferenciada
+testar_estacionariedade(df_diff['diff_1'], 'PMC (1ª diferença)')
+
+```
+
+Diagnóstico da série diferenciada
+```{python}
+# Primeira diferença
+plotar_diagnostico(df_diff['diff_1'], df_diff['t'])
+
+```
+
+
 
 ## Modelagem
 
 5. Ajuste de SARIMA via `AutoARIMA(season_length=12)`.
+Modelagem
+```{python}
+
+# Preparar dados no formato Nixtla (unique_id, ds, y)
+df_sarima = (
+    pmc.query("uf == @MINHA_UF")
+    .rename(columns={"uf": "unique_id", "data": "ds", "volume_idx": "y"})
+    [["unique_id", "ds", "y"]]
+    .reset_index(drop=True)
+)
+
+df_sarima = df_sarima[['y']].reset_index()
+df_sarima = df_sarima.rename(columns={"unique_id": "unique_id", "t": "ds", "y": "y"})
+
+sf = StatsForecast(models=[AutoARIMA(season_length=12)], freq='MS', n_jobs=1)
+sf.fit(df = df_sarima)
+
+
+fitted = sf.fitted_[0, 0]
+print("Modelo selecionado:")
+print(fitted.model_['arma'])  # (p, q, P, Q, s, d, D)
+print(f"\nAICc: {fitted.model_['aicc']:.2f}")
+print(f"Ordem (p,d,q): ({fitted.model_['arma'][0]}, {fitted.model_['arma'][5]}, {fitted.model_['arma'][1]})")
+
+```
+
+Visualização
+
+
 6. Diagnóstico dos resíduos.
 
 ## Previsão · 24 meses à frente
