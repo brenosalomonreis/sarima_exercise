@@ -276,7 +276,6 @@ plotar_diagnostico(df_diff['diff_1'], df_diff['t'])
 ## Modelagem
 
 5. Ajuste de SARIMA via `AutoARIMA(season_length=12)`.
-Modelagem
 ```{python}
 
 # Preparar dados no formato Nixtla (unique_id, ds, y)
@@ -286,15 +285,14 @@ df_sarima = (
     [["unique_id", "ds", "y"]]
     .reset_index(drop=True)
 )
+df_sarima['ds'] = pd.to_datetime(df_sarima['ds'],format="%Y-%m-%d")
 
-df_sarima = df_sarima[['y']].reset_index()
-df_sarima = df_sarima.rename(columns={"unique_id": "unique_id", "t": "ds", "y": "y"})
-
+# Ajustar AutoARIMA com sazonalidade mensal
 sf = StatsForecast(models=[AutoARIMA(season_length=12)], freq='MS', n_jobs=1)
 sf.fit(df = df_sarima)
 
-
-fitted = sf.fitted_[0, 0]
+# Ver modelo selecionado
+fitted = sf.fitted_[0, 0].model_
 print("Modelo selecionado:")
 print(fitted.model_['arma'])  # (p, q, P, Q, s, d, D)
 print(f"\nAICc: {fitted.model_['aicc']:.2f}")
@@ -302,14 +300,14 @@ print(f"Ordem (p,d,q): ({fitted.model_['arma'][0]}, {fitted.model_['arma'][5]}, 
 
 ```
 
-Visualização
-
 
 6. Diagnóstico dos resíduos.
 
 ## Previsão · 24 meses à frente
 
-7. Previsão de 24 meses à frente, com intervalos de 80% e 95%gh.
+7. Previsão de 24 meses à frente, com intervalos de 80% e 95%.
+
+
 
 ## Discussão dos Resultados
 
