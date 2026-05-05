@@ -295,8 +295,10 @@ sf.fit(df = df_sarima)
 fitted = sf.fitted_[0, 0]
 print("Modelo selecionado:")
 print(fitted.model_['arma'])  # (p, q, P, Q, s, d, D)
+
 print(f"\nAICc: {fitted.model_['aicc']:.2f}")
 print(f"Ordem (p,d,q): ({fitted.model_['arma'][0]}, {fitted.model_['arma'][5]}, {fitted.model_['arma'][1]})")
+print(f"SARIMA({fitted.model_['arma'][0]},{fitted.model_['arma'][5]},{fitted.model_['arma'][1]})({fitted.model_['arma'][2]},{fitted.model_['arma'][6]},{fitted.model_['arma'][3]})[{fitted.model_['arma'][4]}]")
 
 ```
 
@@ -358,8 +360,6 @@ plt.tight_layout(); plt.show()
 
 ## Discussão dos Resultados
 
-Escreva 4-5 linhas comentando:
-
 1. O ACF/PACF da série original sugeriu sazonalidade? E tendência? Bate com o que você viu no gráfico de linha?
 
 O ACF/PACF sugeriu sazonalidade e tendência. A decomposição STL também indicou sazonalidade e tendência.
@@ -376,7 +376,7 @@ Além disso, os resultados de sazonalidade indicam que um modelo que considere s
 
 2. Quantas diferenças (regular e sazonal) o AutoARIMA aplicou? E os componentes AR/MA? Conseguiu observar isso no ACF/PACF?
 
-O AutoARIMA aplicou uma diferença regular e uma sazonal. Os componentes AR/MA...
+O AutoARIMA aplicou uma diferença regular (d = 1) e uma sazonal. Os componentes AR aplicou 3 e o MA aplicou 2. O PACF permite observar o AR... O ACF permite observar o MA....
 
 
 3. Os resíduos parecem white noise? Algum padrão remanescente sazonal?
